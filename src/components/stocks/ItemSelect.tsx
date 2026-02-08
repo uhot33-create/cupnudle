@@ -18,6 +18,7 @@
  * - `query`: 条件付き取得（例: 名前順）
  */
 
+import { useEffect, useRef, useState } from 'react';
 import type { Item } from '@/lib/items';
 
 /**
@@ -60,6 +61,32 @@ export default function ItemSelect({
   onDirectItemNameChange,
 }: ItemSelectProps) {
   const selectedItem = items.find((item) => item.id === selectedItemId) ?? null;
+  const [isListOpen, setIsListOpen] = useState(false);
+  const listContainerRef = useRef<HTMLDivElement | null>(null);
+  const isSelectDisabled = isDisabled || mode === 'direct' || items.length === 0;
+  const shouldShowList = isListOpen && !isSelectDisabled;
+
+  useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (!listContainerRef.current) {
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (!listContainerRef.current.contains(target)) {
+        setIsListOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, []);
+
+  const selectedLabel = selectedItem ? selectedItem.name : '選択してください';
 
   return (
     <section className="space-y-3">
@@ -107,19 +134,69 @@ export default function ItemSelect({
       {/* セレクトUI: modeがdirectのときは無効化し、入力の競合を防ぐ。 */}
       <label className="block">
         <span className="mb-1 block text-xs text-slate-600">品名を選択</span>
-        <select
-          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100"
-          value={selectedItemId}
-          onChange={(event) => onSelectItemIdChange(event.target.value)}
-          disabled={isDisabled || mode === 'direct' || items.length === 0}
-        >
-          <option value="">選択してください</option>
-          {items.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
+        <div ref={listContainerRef} className="relative">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm disabled:bg-slate-100"
+            onClick={() => setIsListOpen((open) => !open)}
+            disabled={isSelectDisabled}
+            aria-haspopup="listbox"
+            aria-expanded={shouldShowList}
+          >
+            <span className={selectedItem ? 'text-slate-900' : 'text-slate-500'}>{selectedLabel}</span>
+            <span className="ml-2 text-slate-500">{shouldShowList ? '▲' : '▼'}</span>
+          </button>
+
+          {shouldShowList && (
+            <ul
+              className="absolute z-10 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+              role="listbox"
+            >
+              <li>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  onClick={() => {
+                    onSelectItemIdChange('');
+                    setIsListOpen(false);
+                  }}
+                >
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-slate-100 text-[10px] text-slate-500">
+                    -
+                  </span>
+                  <span>選択してください</span>
+                </button>
+              </li>
+              {items.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className={[
+                      'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50',
+                      selectedItemId === item.id ? 'bg-blue-50 text-blue-700' : 'text-slate-700',
+                    ].join(' ')}
+                    onClick={() => {
+                      onSelectItemIdChange(item.id);
+                      setIsListOpen(false);
+                    }}
+                    role="option"
+                    aria-selected={selectedItemId === item.id}
+                  >
+                    {item.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={item.imageUrl} alt="" className="h-8 w-8 rounded-md object-cover" />
+                    ) : (
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-slate-200 text-[10px] text-slate-500">
+                        なし
+                      </span>
+                    )}
+                    <span className="truncate">{item.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </label>
 
       {/*
