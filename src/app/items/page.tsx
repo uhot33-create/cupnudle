@@ -39,6 +39,42 @@ import { deleteItemImageFile, uploadItemImageFile } from '@/lib/itemImageStorage
 import { countStocksByItemId } from '@/lib/stocks';
 
 /**
+ * この定数の用途:
+ * - ネットワーク処理の最大待機時間を固定する。
+ * なぜ必要か:
+ * - Storage/Firestore通信が長時間応答しない場合に、UIが「保存中...」で固まり続けることを防ぐため。
+ */
+const ITEM_REQUEST_TIMEOUT_MS = 15000;
+
+/**
+ * この関数の用途:
+ * - Promiseの完了待ちにタイムアウトを設定する。
+ *
+ * 処理の流れ:
+ * - 1) 元の非同期処理とタイマーを同時開始する。
+ * - 2) 先に完了した方の結果を採用する。
+ * - 3) タイムアウト時は分かりやすいエラーを返す。
+ */
+async function withTimeout<T>(taskPromise: Promise<T>, taskLabel: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        reject(
+          new Error(`${taskLabel}がタイムアウトしました。ネットワークまたはFirebase設定を確認してください。`),
+        );
+      }, ITEM_REQUEST_TIMEOUT_MS);
+    });
+
+    return await Promise.race([taskPromise, timeoutPromise]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+/**
  * このページの用途:
  * - 品名マスタCRUDをスマホ優先UIで提供する。
  */
@@ -65,7 +101,7 @@ export default function ItemsPage() {
     setErrorMessage(null);
 
     try {
-      const rows = await listItems();
+      const rows = await withTimeout(listItems(), '品名一覧の取得');
       setItems(rows);
     } catch (error) {
       const message = error instanceof Error ? error.message : '品名一覧の取得に失敗しました。';
@@ -95,10 +131,10 @@ export default function ItemsPage() {
 
     try {
       if (payload.imageFile) {
-        uploadedImage = await uploadItemImageFile(payload.imageFile);
+        uploadedImage = await withTimeout(uploadItemImageFile(payload.imageFile), '画像アップロード');
       }
 
-      await addItem(payload.name, uploadedImage);
+      await withTimeout(addItem(payload.name, uploadedImage), '品名追加');
       await loadItems();
     } catch (error) {
       // 作成失敗時はアップロード済み画像が残らないよう削除する。
@@ -135,34 +171,43 @@ export default function ItemsPage() {
 
     try {
       if (payload.imageFile) {
-        newlyUploadedImage = await uploadItemImageFile(payload.imageFile);
+        newlyUploadedImage = await withTimeout(uploadItemImageFile(payload.imageFile), '画像アップロード');
       }
 
       if (newlyUploadedImage) {
-        await updateItem(payload.id, {
-          name: payload.name,
-          imageUrl: newlyUploadedImage.imageUrl,
-          imagePath: newlyUploadedImage.imagePath,
-        });
+        await withTimeout(
+          updateItem(payload.id, {
+            name: payload.name,
+            imageUrl: newlyUploadedImage.imageUrl,
+            imagePath: newlyUploadedImage.imagePath,
+          }),
+          '品名更新',
+        );
 
         // 新画像を反映できた後で旧画像を削除して、表示切れリスクを減らす。
         if (editingItem.imagePath) {
-          await deleteItemImageFile(editingItem.imagePath).catch(() => null);
+          await withTimeout(deleteItemImageFile(editingItem.imagePath), '旧画像削除').catch(() => null);
         }
       } else if (!payload.keepExistingImage) {
-        await updateItem(payload.id, {
-          name: payload.name,
-          imageUrl: null,
-          imagePath: null,
-        });
+        await withTimeout(
+          updateItem(payload.id, {
+            name: payload.name,
+            imageUrl: null,
+            imagePath: null,
+          }),
+          '品名更新',
+        );
 
         if (editingItem.imagePath) {
-          await deleteItemImageFile(editingItem.imagePath).catch(() => null);
+          await withTimeout(deleteItemImageFile(editingItem.imagePath), '旧画像削除').catch(() => null);
         }
       } else {
-        await updateItem(payload.id, {
-          name: payload.name,
-        });
+        await withTimeout(
+          updateItem(payload.id, {
+            name: payload.name,
+          }),
+          '品名更新',
+        );
       }
 
       setEditingItem(null);
@@ -206,9 +251,9 @@ export default function ItemsPage() {
         return;
       }
 
-      await deleteItem(item.id);
+      await withTimeout(deleteItem(item.id), '品名削除');
       if (item.imagePath) {
-        await deleteItemImageFile(item.imagePath).catch(() => null);
+        await withTimeout(deleteItemImageFile(item.imagePath), '画像削除').catch(() => null);
       }
       await loadItems();
     } catch (error) {
