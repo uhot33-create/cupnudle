@@ -1,16 +1,19 @@
 ﻿import Link from 'next/link';
+import LogoutButton from '@/components/auth/LogoutButton';
 import StockList from '@/components/stocks/StockList';
 
 /**
- * このページの用途:
- * - ルートパス `/` で在庫一覧画面を表示する。
+ * このファイルの役割:
+ * - ルートパス `/` の在庫一覧画面を表示する。
  *
- * なぜこの構成が必要か:
- * - App Routerのページはルーティング入口として薄く保ち、
- *   実際の状態管理やFirestore操作は子コンポーネントへ分離した方が保守しやすいため。
+ * 関連画面:
+ * - /
+ * - /stocks/new
+ * - /items
+ * - /login
  *
- * どこを変更すればよいか:
- * - 画面のヘッダー文言やレイアウト余白を変更したい場合はこのファイルを編集する。
+ * 主要関数:
+ * - HomePage
  */
 export default function HomePage() {
   return (
@@ -34,6 +37,11 @@ export default function HomePage() {
           >
             品名を管理
           </Link>
+        </div>
+
+        {/* セッションを終了するためのログアウトボタン。 */}
+        <div className="mt-2">
+          <LogoutButton />
         </div>
       </header>
 
