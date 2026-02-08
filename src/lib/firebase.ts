@@ -72,13 +72,28 @@ function getFirebaseConfigFromEnv(): FirebaseConfig {
     );
   }
 
+  /**
+   * 型ガード関数:
+   * - ここまでで未設定キーは除外済みだが、TypeScriptは `string | undefined` のまま扱う。
+   * - この関数で `string` へ確定させ、ビルド時型エラーを防ぐ。
+   */
+  const requireDefined = (value: string | undefined, keyName: string): string => {
+    if (!value) {
+      throw new Error(`Firebaseの環境変数が未設定です。未設定キー: ${keyName}`);
+    }
+    return value;
+  };
+
   return {
-    apiKey,
-    authDomain,
-    projectId,
-    storageBucket,
-    messagingSenderId,
-    appId,
+    apiKey: requireDefined(apiKey, 'NEXT_PUBLIC_FIREBASE_API_KEY'),
+    authDomain: requireDefined(authDomain, 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+    projectId: requireDefined(projectId, 'NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
+    storageBucket: requireDefined(storageBucket, 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+    messagingSenderId: requireDefined(
+      messagingSenderId,
+      'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
+    ),
+    appId: requireDefined(appId, 'NEXT_PUBLIC_FIREBASE_APP_ID'),
   };
 }
 
