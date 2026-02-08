@@ -1,7 +1,7 @@
 ﻿/**
  * このファイルの用途:
  * - Firebase SDK を1か所で初期化し、全画面で同じ接続設定を使うための共通モジュール。
- * - Firestore参照とStorage参照を export して、CRUD実装側で毎回初期化コードを書かないようにする。
+ * - Firestore参照を export して、CRUD実装側で毎回初期化コードを書かないようにする。
  *
  * なぜこの設定が必要か:
  * - 初期化処理を複数ファイルで重複させると、保守時に設定漏れが発生する。
@@ -9,7 +9,7 @@
  *
  * どこを変更すればよいか:
  * - Firebaseプロジェクトを切り替える場合は `.env.local` の値を変更する。
- * - Firestore以外の機能（Auth, Storage）を使う場合は、このファイルでSDK importとexportを追加する。
+ * - Firestore以外の機能（Authなど）を使う場合は、このファイルでSDK importとexportを追加する。
  *
  * TODO:
  * - 本番運用で複数環境（dev/stg/prod）を分ける場合は、envファイルを環境ごとに分離する。
@@ -17,7 +17,6 @@
 
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
-import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 /**
  * Firebase設定値の型。
@@ -30,23 +29,21 @@ type FirebaseConfig = {
   apiKey: string;
   authDomain: string;
   projectId: string;
-  storageBucket: string;
   messagingSenderId: string;
   appId: string;
+  storageBucket?: string;
 };
 
 /**
  * 環境変数の存在を実行時に確認する関数。
  * なぜ必要か:
  * - 値が未設定のまま起動した場合に、どのキーが不足しているかを明確に表示するため。
- * どこを変更すればよいか:
- * - 必須キーを追加したときはキー列挙部分へ同じキーを追加する。
  *
  * 処理の流れ:
- * - 1) 必須キー一覧を定義する。
- * - 2) 未設定のキーだけを抽出する。
- * - 3) 未設定が1件でもあれば、キー名を含めてエラーを投げる。
- * - 4) すべて設定済みなら FirebaseConfig 形式で返す。
+ * - 1) 必須キーを静的参照で読む。
+ * - 2) 未設定キーを列挙する。
+ * - 3) 未設定があればエラーを投げる。
+ * - 4) すべて設定済みなら FirebaseConfig として返す。
  */
 function getFirebaseConfigFromEnv(): FirebaseConfig {
   // Next.jsのクライアントビルドでは、NEXT_PUBLIC_* は「静的参照」のときだけ値が埋め込まれる。
@@ -54,23 +51,20 @@ function getFirebaseConfigFromEnv(): FirebaseConfig {
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
   const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
   const messagingSenderId = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID;
   const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID;
+  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
 
   const missingKeys = [
     !apiKey ? 'NEXT_PUBLIC_FIREBASE_API_KEY' : null,
     !authDomain ? 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN' : null,
     !projectId ? 'NEXT_PUBLIC_FIREBASE_PROJECT_ID' : null,
-    !storageBucket ? 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET' : null,
     !messagingSenderId ? 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID' : null,
     !appId ? 'NEXT_PUBLIC_FIREBASE_APP_ID' : null,
   ].filter((value): value is string => value !== null);
 
   if (missingKeys.length > 0) {
-    throw new Error(
-      `Firebaseの環境変数が未設定です。未設定キー: ${missingKeys.join(', ')}`,
-    );
+    throw new Error(`Firebaseの環境変数が未設定です。未設定キー: ${missingKeys.join(', ')}`);
   }
 
   /**
@@ -89,12 +83,9 @@ function getFirebaseConfigFromEnv(): FirebaseConfig {
     apiKey: requireDefined(apiKey, 'NEXT_PUBLIC_FIREBASE_API_KEY'),
     authDomain: requireDefined(authDomain, 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
     projectId: requireDefined(projectId, 'NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
-    storageBucket: requireDefined(storageBucket, 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
-    messagingSenderId: requireDefined(
-      messagingSenderId,
-      'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
-    ),
+    messagingSenderId: requireDefined(messagingSenderId, 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
     appId: requireDefined(appId, 'NEXT_PUBLIC_FIREBASE_APP_ID'),
+    storageBucket,
   };
 }
 
@@ -106,11 +97,6 @@ let appInstance: ReturnType<typeof initializeApp> | null = null;
  * Firestoreインスタンスのキャッシュ。
  */
 let firestoreInstance: Firestore | null = null;
-/**
- * Storageインスタンスのキャッシュ。
- */
-let storageInstance: FirebaseStorage | null = null;
-const storageInstanceByBucket = new Map<string, FirebaseStorage>();
 
 /**
  * Firebase App を遅延初期化で取得する処理。
@@ -139,37 +125,4 @@ export function getDb() {
 
   firestoreInstance = getFirestore(getFirebaseApp());
   return firestoreInstance;
-}
-
-/**
- * Firebase Storage参照を遅延初期化で取得する処理。
- * なぜ必要か:
- * - 品名画像をURL直書きではなく、Storageに保存して管理するため。
- */
-export function getFirebaseStorage(bucketName?: string) {
-  if (bucketName) {
-    const cachedByBucket = storageInstanceByBucket.get(bucketName);
-    if (cachedByBucket) {
-      return cachedByBucket;
-    }
-
-    const nextInstance = getStorage(getFirebaseApp(), `gs://${bucketName}`);
-    storageInstanceByBucket.set(bucketName, nextInstance);
-    return nextInstance;
-  }
-
-  if (storageInstance) {
-    return storageInstance;
-  }
-
-  storageInstance = getStorage(getFirebaseApp());
-  return storageInstance;
-}
-
-/**
- * この関数の用途:
- * - 環境変数から解決されたStorageバケット名を返す。
- */
-export function getFirebaseStorageBucketName(): string {
-  return getFirebaseConfigFromEnv().storageBucket;
 }

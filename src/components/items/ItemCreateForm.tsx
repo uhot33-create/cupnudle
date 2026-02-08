@@ -3,48 +3,22 @@
 /**
  * このファイルの役割:
  * - 品名マスタ管理画面 `/items` の「追加フォーム」を担当する。
- * - name必須、画像はStorage保存（任意）を受け取り、親へ送信する。
- *
- * 関連画面:
- * - `/items` 品名マスタ管理画面
- *
- * 主要関数:
- * - `ItemCreateForm`（入力UIと送信）
- *
- * Firestore概念の補足:
- * - `collection`: 同じ種類のデータをまとめる箱（ここでは `items`）。
- * - `doc`: collectionの中の1件（1つの品名マスタ）。
- * - `query`: 条件付きでデータを取る命令（一覧はname昇順）。
+ * - name必須、画像（Data URL保存）任意を受け取り、親へ送信する。
  */
 
 import { useState } from 'react';
 import ItemImageInput from '@/components/items/ItemImageInput';
 
-/**
- * この型の用途:
- * - 追加フォームが親へ渡すデータ形式を固定し、受け渡しミスを防ぐ。
- */
 type ItemCreateFormProps = {
   isSubmitting: boolean;
   errorMessage: string | null;
-  onSubmit: (payload: { name: string; imageFile: File | null }) => Promise<void>;
+  onSubmit: (payload: { name: string; imageDataUrl: string | null }) => Promise<void>;
 };
 
-/**
- * このコンポーネントの用途:
- * - 品名マスタの新規追加フォームを表示する。
- *
- * なぜこの構成にしたか:
- * - フォームを分離すると、画面本体の状態管理（一覧取得・編集・削除）が読みやすくなるため。
- */
 export default function ItemCreateForm({ isSubmitting, errorMessage, onSubmit }: ItemCreateFormProps) {
   const [name, setName] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
 
-  /**
-   * この関数の用途:
-   * - 入力値を検証して親へ送信する。
-   */
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -60,12 +34,11 @@ export default function ItemCreateForm({ isSubmitting, errorMessage, onSubmit }:
 
     await onSubmit({
       name: trimmedName,
-      imageFile,
+      imageDataUrl,
     });
 
-    // 登録成功時のみ入力欄を初期化する。
     setName('');
-    setImageFile(null);
+    setImageDataUrl(null);
   };
 
   return (
@@ -73,7 +46,6 @@ export default function ItemCreateForm({ isSubmitting, errorMessage, onSubmit }:
       <h2 className="text-base font-semibold text-slate-900">品名を追加</h2>
 
       <form className="mt-3 space-y-3" onSubmit={(event) => void handleSubmit(event)}>
-        {/* 品名入力: 必須項目。 */}
         <label className="block">
           <span className="mb-1 block text-xs text-slate-600">品名（必須）</span>
           <input
@@ -90,10 +62,10 @@ export default function ItemCreateForm({ isSubmitting, errorMessage, onSubmit }:
 
         <ItemImageInput
           disabled={isSubmitting}
-          selectedImageFile={imageFile}
+          selectedImageDataUrl={imageDataUrl}
           existingImageUrl={null}
-          onSelectImageFile={(file) => setImageFile(file)}
-          onRemoveImage={() => setImageFile(null)}
+          onSelectImageDataUrl={(dataUrl) => setImageDataUrl(dataUrl)}
+          onRemoveImage={() => setImageDataUrl(null)}
         />
 
         {errorMessage && (

@@ -37,8 +37,8 @@ export default function ItemRow({ item, isWorking, onEdit, onDelete }: ItemRowPr
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {item.imageUrl ? (
-            // 外部URL画像をそのまま表示する要件のため標準imgを利用する。
-            // Next/Image利用時は next.config.ts の許可ドメイン設定が別途必要になる。
+            // Data URLを含む画像文字列を表示するため、標準imgを使う。
+            // なぜ: Next/ImageはData URLにも使えるが、ここでは設定依存を減らすためにシンプルにする。
             // eslint-disable-next-line @next/next/no-img-element
             <img src={item.imageUrl} alt={`${item.name} の画像`} className="h-12 w-12 rounded-md object-cover" />
           ) : (
@@ -49,7 +49,7 @@ export default function ItemRow({ item, isWorking, onEdit, onDelete }: ItemRowPr
 
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
-            <p className="truncate text-xs text-slate-600">{item.imageUrl ?? '画像URL未設定'}</p>
+            <p className="truncate text-xs text-slate-600">{item.imageUrl ? '画像あり' : '画像なし'}</p>
           </div>
         </div>
 

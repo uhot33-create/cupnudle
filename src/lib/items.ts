@@ -34,9 +34,6 @@ import { getDb } from '@/lib/firebase';
 /**
  * この定数の用途:
  * - Firestoreの品名マスタコレクション名を1か所で管理する。
- *
- * なぜこの設定が必要か:
- * - 文字列の直書きを減らし、リネーム時の修正漏れを防ぐため。
  */
 const ITEMS_COLLECTION = 'items';
 
@@ -44,13 +41,12 @@ const ITEMS_COLLECTION = 'items';
  * この型の用途:
  * - itemsコレクションのドキュメント形式を定義する。
  *
- * どこを変更すればよいか:
- * - フィールド追加時は list変換処理 `toItem` も同時に変更する。
+ * 補足:
+ * - imageUrl には外部URLではなく、Data URL（Base64）を保存できる。
  */
 export type ItemDoc = {
   name: string;
   imageUrl: string | null;
-  imagePath: string | null;
   createdAt: Timestamp;
 };
 
@@ -69,24 +65,11 @@ export type Item = ItemDoc & {
 export type UpdateItemInput = {
   name?: string;
   imageUrl?: string | null;
-  imagePath?: string | null;
-};
-
-/**
- * この型の用途:
- * - Storageへ保存した画像参照情報を addItem 引数として渡す。
- */
-export type ItemImageRef = {
-  imageUrl: string;
-  imagePath: string;
 };
 
 /**
  * この関数の用途:
  * - Firestoreの生ドキュメントをアプリ内型へ安全に変換する。
- *
- * なぜこの設定が必要か:
- * - Firestoreは実行時に型保証がないため、最低限のフィールド検証を行う必要がある。
  */
 function toItem(snapshot: QueryDocumentSnapshot<DocumentData>): Item {
   const data = snapshot.data();
@@ -100,11 +83,6 @@ function toItem(snapshot: QueryDocumentSnapshot<DocumentData>): Item {
     throw new Error('itemsドキュメントのimageUrlが不正です。');
   }
 
-  const imagePath = data.imagePath ?? null;
-  if (imagePath !== null && typeof imagePath !== 'string') {
-    throw new Error('itemsドキュメントのimagePathが不正です。');
-  }
-
   if (!data.createdAt) {
     throw new Error('itemsドキュメントのcreatedAtが不正です。');
   }
@@ -113,7 +91,6 @@ function toItem(snapshot: QueryDocumentSnapshot<DocumentData>): Item {
     id: snapshot.id,
     name: data.name,
     imageUrl,
-    imagePath,
     createdAt: data.createdAt as Timestamp,
   };
 }
@@ -121,14 +98,8 @@ function toItem(snapshot: QueryDocumentSnapshot<DocumentData>): Item {
 /**
  * この関数の用途:
  * - 品名マスタを新規作成する。
- *
- * なぜこの設定が必要か:
- * - 作成時に入力検証とDB保存をまとめて実行し、呼び出し側の処理を単純化するため。
- *
- * どこを変更すればよいか:
- * - 品名の文字数制限を変える場合は、以下のバリデーション条件を変更する。
  */
-export async function addItem(name: string, image: ItemImageRef | null = null): Promise<string> {
+export async function addItem(name: string, imageUrl: string | null = null): Promise<string> {
   const db = getDb();
   const trimmedName = name.trim();
   if (trimmedName.length === 0) {
@@ -140,8 +111,7 @@ export async function addItem(name: string, image: ItemImageRef | null = null): 
 
   const docRef = await addDoc(collection(db, ITEMS_COLLECTION), {
     name: trimmedName,
-    imageUrl: image?.imageUrl ?? null,
-    imagePath: image?.imagePath ?? null,
+    imageUrl,
     createdAt: serverTimestamp(),
   });
 
@@ -151,9 +121,6 @@ export async function addItem(name: string, image: ItemImageRef | null = null): 
 /**
  * この関数の用途:
  * - 品名マスタ一覧を名前昇順で取得する。
- *
- * なぜこの設定が必要か:
- * - 一覧表示を安定させ、ユーザーが目的の品名を探しやすくするため。
  */
 export async function listItems(): Promise<Item[]> {
   const db = getDb();
@@ -165,15 +132,6 @@ export async function listItems(): Promise<Item[]> {
 /**
  * この関数の用途:
  * - 品名マスタを更新する。
- *
- * なぜこの設定が必要か:
- * - フィールド単位で更新できるようにし、不要な上書きを防ぐため。
- *
- * 処理の流れ:
- * - 1) IDと更新内容を検証する。
- * - 2) 更新可能フィールドだけをペイロードへ詰める。
- * - 3) 空更新を拒否する。
- * - 4) updateDocを実行する。
  */
 export async function updateItem(id: string, updates: UpdateItemInput): Promise<void> {
   const db = getDb();
@@ -181,7 +139,7 @@ export async function updateItem(id: string, updates: UpdateItemInput): Promise<
     throw new Error('更新対象IDが空です。');
   }
 
-  const payload: Partial<Pick<ItemDoc, 'name' | 'imageUrl' | 'imagePath'>> = {};
+  const payload: Partial<Pick<ItemDoc, 'name' | 'imageUrl'>> = {};
 
   if (updates.name !== undefined) {
     const trimmedName = updates.name.trim();
@@ -198,10 +156,6 @@ export async function updateItem(id: string, updates: UpdateItemInput): Promise<
     payload.imageUrl = updates.imageUrl;
   }
 
-  if (updates.imagePath !== undefined) {
-    payload.imagePath = updates.imagePath;
-  }
-
   if (Object.keys(payload).length === 0) {
     throw new Error('更新対象フィールドがありません。');
   }
@@ -212,9 +166,6 @@ export async function updateItem(id: string, updates: UpdateItemInput): Promise<
 /**
  * この関数の用途:
  * - 品名マスタを削除する。
- *
- * なぜこの設定が必要か:
- * - Firestore削除処理を関数化し、画面側の責務を減らすため。
  */
 export async function deleteItem(id: string): Promise<void> {
   const db = getDb();
@@ -228,9 +179,6 @@ export async function deleteItem(id: string): Promise<void> {
 /**
  * この関数の用途:
  * - 在庫登録時に使うため、単一の品名マスタを取得する。
- *
- * なぜこの設定が必要か:
- * - `stocks.ts` で itemId 指定時に品名スナップショットを作るため。
  */
 export async function getItemById(id: string): Promise<Item | null> {
   const db = getDb();
@@ -253,11 +201,6 @@ export async function getItemById(id: string): Promise<Item | null> {
     throw new Error('itemsドキュメントのimageUrlが不正です。');
   }
 
-  const imagePath = data.imagePath ?? null;
-  if (imagePath !== null && typeof imagePath !== 'string') {
-    throw new Error('itemsドキュメントのimagePathが不正です。');
-  }
-
   if (!data.createdAt) {
     throw new Error('itemsドキュメントのcreatedAtが不正です。');
   }
@@ -266,7 +209,6 @@ export async function getItemById(id: string): Promise<Item | null> {
     id: snapshot.id,
     name: data.name,
     imageUrl,
-    imagePath,
     createdAt: data.createdAt as Timestamp,
   };
 }

@@ -3,25 +3,12 @@
 /**
  * このファイルの役割:
  * - 品名マスタ管理画面 `/items` の「編集モーダル」を担当する。
- *
- * 関連画面:
- * - `/items` 品名マスタ管理画面
- *
- * 主要関数:
- * - `ItemEditModal`（編集UIと更新送信）
- *
- * Firestore概念の補足:
- * - `updateDoc`: 既存docの一部フィールドを更新する操作。
  */
 
 import { useState } from 'react';
 import ItemImageInput from '@/components/items/ItemImageInput';
 import type { Item } from '@/lib/items';
 
-/**
- * この型の用途:
- * - 編集モーダルが親から受け取る値を固定する。
- */
 type ItemEditModalProps = {
   item: Item;
   isSaving: boolean;
@@ -30,27 +17,16 @@ type ItemEditModalProps = {
   onSave: (payload: {
     id: string;
     name: string;
-    imageFile: File | null;
+    imageDataUrl: string | null;
     keepExistingImage: boolean;
   }) => Promise<void>;
 };
 
-/**
- * このコンポーネントの用途:
- * - 品名マスタの更新をモーダルで行う。
- *
- * なぜモーダルを選ぶのか:
- * - スマホで一覧を見ながら1件だけ素早く編集でき、画面遷移が不要になるため。
- */
 export default function ItemEditModal({ item, isSaving, errorMessage, onClose, onSave }: ItemEditModalProps) {
   const [name, setName] = useState(item.name);
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [keepExistingImage, setKeepExistingImage] = useState(Boolean(item.imageUrl));
 
-  /**
-   * この関数の用途:
-   * - 編集値の検証と保存処理を行う。
-   */
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -67,7 +43,7 @@ export default function ItemEditModal({ item, isSaving, errorMessage, onClose, o
     await onSave({
       id: item.id,
       name: trimmedName,
-      imageFile,
+      imageDataUrl,
       keepExistingImage,
     });
   };
@@ -93,14 +69,14 @@ export default function ItemEditModal({ item, isSaving, errorMessage, onClose, o
 
           <ItemImageInput
             disabled={isSaving}
-            selectedImageFile={imageFile}
+            selectedImageDataUrl={imageDataUrl}
             existingImageUrl={keepExistingImage ? item.imageUrl : null}
-            onSelectImageFile={(file) => {
-              setImageFile(file);
+            onSelectImageDataUrl={(dataUrl) => {
+              setImageDataUrl(dataUrl);
               setKeepExistingImage(false);
             }}
             onRemoveImage={() => {
-              setImageFile(null);
+              setImageDataUrl(null);
               setKeepExistingImage(false);
             }}
           />

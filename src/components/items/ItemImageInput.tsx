@@ -11,8 +11,7 @@
  * - ItemImageInput
  */
 
-import { useEffect, useMemo } from 'react';
-import { validateItemImageFile } from '@/lib/itemImageStorage';
+import { convertImageFileToDataUrl, validateItemImageFile } from '@/lib/itemImageStorage';
 
 /**
  * この型の用途:
@@ -20,9 +19,9 @@ import { validateItemImageFile } from '@/lib/itemImageStorage';
  */
 type ItemImageInputProps = {
   disabled: boolean;
-  selectedImageFile: File | null;
+  selectedImageDataUrl: string | null;
   existingImageUrl: string | null;
-  onSelectImageFile: (file: File) => void;
+  onSelectImageDataUrl: (dataUrl: string) => void;
   onRemoveImage: () => void;
 };
 
@@ -35,40 +34,16 @@ type ItemImageInputProps = {
  */
 export default function ItemImageInput({
   disabled,
-  selectedImageFile,
+  selectedImageDataUrl,
   existingImageUrl,
-  onSelectImageFile,
+  onSelectImageDataUrl,
   onRemoveImage,
 }: ItemImageInputProps) {
   /**
-   * 選択中ファイルのプレビューURL。
-   * なぜこの実装か:
-   * - stateを使わず計算値として扱うことで、effect内のsetState禁止ルールに抵触しないようにするため。
-   */
-  const selectedPreviewUrl = useMemo(() => {
-    if (!selectedImageFile) {
-      return null;
-    }
-    return URL.createObjectURL(selectedImageFile);
-  }, [selectedImageFile]);
-
-  /**
-   * この副作用の用途:
-   * - useMemoで作成したObject URLを不要時に解放する。
-   */
-  useEffect(() => {
-    return () => {
-      if (selectedPreviewUrl) {
-        URL.revokeObjectURL(selectedPreviewUrl);
-      }
-    };
-  }, [selectedPreviewUrl]);
-
-  /**
    * この関数の用途:
-   * - ファイル選択イベントから画像を受け取り、検証して親へ渡す。
+   * - ファイル選択イベントから画像を受け取り、Data URLへ変換して親へ渡す。
    */
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
@@ -76,9 +51,10 @@ export default function ItemImageInput({
 
     try {
       validateItemImageFile(file);
-      onSelectImageFile(file);
+      const dataUrl = await convertImageFileToDataUrl(file);
+      onSelectImageDataUrl(dataUrl);
     } catch (error) {
-      const message = error instanceof Error ? error.message : '画像ファイルの検証に失敗しました。';
+      const message = error instanceof Error ? error.message : '画像ファイルの変換に失敗しました。';
       window.alert(message);
       event.target.value = '';
     }
@@ -86,9 +62,9 @@ export default function ItemImageInput({
 
   /**
    * この関数の用途:
-   * - クリップボード貼り付けから画像を取り出して親へ渡す。
+   * - クリップボード貼り付けから画像を取り出してData URLに変換する。
    */
-  const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+  const handlePaste = async (event: React.ClipboardEvent<HTMLDivElement>) => {
     const items = event.clipboardData?.items;
     if (!items) {
       return;
@@ -108,16 +84,17 @@ export default function ItemImageInput({
 
       try {
         validateItemImageFile(file);
-        onSelectImageFile(file);
+        const dataUrl = await convertImageFileToDataUrl(file);
+        onSelectImageDataUrl(dataUrl);
       } catch (error) {
-        const message = error instanceof Error ? error.message : '貼り付け画像の検証に失敗しました。';
+        const message = error instanceof Error ? error.message : '貼り付け画像の変換に失敗しました。';
         window.alert(message);
       }
       return;
     }
   };
 
-  const previewUrl = selectedPreviewUrl ?? existingImageUrl;
+  const previewUrl = selectedImageDataUrl ?? existingImageUrl;
 
   return (
     <section className="space-y-2">
@@ -126,13 +103,17 @@ export default function ItemImageInput({
       <input
         type="file"
         accept="image/*"
-        onChange={handleFileChange}
+        onChange={(event) => {
+          void handleFileChange(event);
+        }}
         disabled={disabled}
         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-black"
       />
 
       <div
-        onPaste={handlePaste}
+        onPaste={(event) => {
+          void handlePaste(event);
+        }}
         className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-600"
       >
         ここで Ctrl + V すると画像を貼り付けできます。

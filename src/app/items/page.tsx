@@ -33,16 +33,14 @@ import {
   listItems,
   updateItem,
   type Item,
-  type ItemImageRef,
 } from '@/lib/items';
-import { deleteItemImageFile, uploadItemImageFile } from '@/lib/itemImageStorage';
 import { countStocksByItemId } from '@/lib/stocks';
 
 /**
  * この定数の用途:
  * - ネットワーク処理の最大待機時間を固定する。
  * なぜ必要か:
- * - Storage/Firestore通信が長時間応答しない場合に、UIが「保存中...」で固まり続けることを防ぐため。
+ * - Firestore通信が長時間応答しない場合に、UIが「保存中...」で固まり続けることを防ぐため。
  */
 const ITEM_REQUEST_TIMEOUT_MS = 15000;
 
@@ -123,25 +121,14 @@ export default function ItemsPage() {
    * この関数の用途:
    * - 品名を新規追加する。
    */
-  const handleCreate = async (payload: { name: string; imageFile: File | null }) => {
+  const handleCreate = async (payload: { name: string; imageDataUrl: string | null }) => {
     setCreateErrorMessage(null);
     setIsCreating(true);
 
-    let uploadedImage: ItemImageRef | null = null;
-
     try {
-      if (payload.imageFile) {
-        uploadedImage = await withTimeout(uploadItemImageFile(payload.imageFile), '画像アップロード');
-      }
-
-      await withTimeout(addItem(payload.name, uploadedImage), '品名追加');
+      await withTimeout(addItem(payload.name, payload.imageDataUrl), '品名追加');
       await loadItems();
     } catch (error) {
-      // 作成失敗時はアップロード済み画像が残らないよう削除する。
-      if (uploadedImage?.imagePath) {
-        await deleteItemImageFile(uploadedImage.imagePath).catch(() => null);
-      }
-
       const message = error instanceof Error ? error.message : '品名追加に失敗しました。';
       setCreateErrorMessage(message);
       throw error;
@@ -157,7 +144,7 @@ export default function ItemsPage() {
   const handleSaveEdit = async (payload: {
     id: string;
     name: string;
-    imageFile: File | null;
+    imageDataUrl: string | null;
     keepExistingImage: boolean;
   }) => {
     if (!editingItem) {
@@ -167,40 +154,23 @@ export default function ItemsPage() {
     setIsSavingEdit(true);
     setEditErrorMessage(null);
 
-    let newlyUploadedImage: ItemImageRef | null = null;
-
     try {
-      if (payload.imageFile) {
-        newlyUploadedImage = await withTimeout(uploadItemImageFile(payload.imageFile), '画像アップロード');
-      }
-
-      if (newlyUploadedImage) {
+      if (payload.imageDataUrl) {
         await withTimeout(
           updateItem(payload.id, {
             name: payload.name,
-            imageUrl: newlyUploadedImage.imageUrl,
-            imagePath: newlyUploadedImage.imagePath,
+            imageUrl: payload.imageDataUrl,
           }),
           '品名更新',
         );
-
-        // 新画像を反映できた後で旧画像を削除して、表示切れリスクを減らす。
-        if (editingItem.imagePath) {
-          await withTimeout(deleteItemImageFile(editingItem.imagePath), '旧画像削除').catch(() => null);
-        }
       } else if (!payload.keepExistingImage) {
         await withTimeout(
           updateItem(payload.id, {
             name: payload.name,
             imageUrl: null,
-            imagePath: null,
           }),
           '品名更新',
         );
-
-        if (editingItem.imagePath) {
-          await withTimeout(deleteItemImageFile(editingItem.imagePath), '旧画像削除').catch(() => null);
-        }
       } else {
         await withTimeout(
           updateItem(payload.id, {
@@ -213,11 +183,6 @@ export default function ItemsPage() {
       setEditingItem(null);
       await loadItems();
     } catch (error) {
-      // 更新失敗時は新規アップロード画像を消して孤立ファイルを防ぐ。
-      if (newlyUploadedImage?.imagePath) {
-        await deleteItemImageFile(newlyUploadedImage.imagePath).catch(() => null);
-      }
-
       const message = error instanceof Error ? error.message : '品名更新に失敗しました。';
       setEditErrorMessage(message);
     } finally {
@@ -252,9 +217,6 @@ export default function ItemsPage() {
       }
 
       await withTimeout(deleteItem(item.id), '品名削除');
-      if (item.imagePath) {
-        await withTimeout(deleteItemImageFile(item.imagePath), '画像削除').catch(() => null);
-      }
       await loadItems();
     } catch (error) {
       const message = error instanceof Error ? error.message : '品名削除に失敗しました。';
