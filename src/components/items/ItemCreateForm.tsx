@@ -3,7 +3,7 @@
 /**
  * このファイルの役割:
  * - 品名マスタ管理画面 `/items` の「追加フォーム」を担当する。
- * - name必須、imageUrl任意の入力を受け取り、親へ送信する。
+ * - name必須、画像はStorage保存（任意）を受け取り、親へ送信する。
  *
  * 関連画面:
  * - `/items` 品名マスタ管理画面
@@ -18,6 +18,7 @@
  */
 
 import { useState } from 'react';
+import ItemImageInput from '@/components/items/ItemImageInput';
 
 /**
  * この型の用途:
@@ -26,7 +27,7 @@ import { useState } from 'react';
 type ItemCreateFormProps = {
   isSubmitting: boolean;
   errorMessage: string | null;
-  onSubmit: (payload: { name: string; imageUrl: string | null }) => Promise<void>;
+  onSubmit: (payload: { name: string; imageFile: File | null }) => Promise<void>;
 };
 
 /**
@@ -38,7 +39,7 @@ type ItemCreateFormProps = {
  */
 export default function ItemCreateForm({ isSubmitting, errorMessage, onSubmit }: ItemCreateFormProps) {
   const [name, setName] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
 
   /**
    * この関数の用途:
@@ -57,16 +58,14 @@ export default function ItemCreateForm({ isSubmitting, errorMessage, onSubmit }:
       return;
     }
 
-    const normalizedImageUrl = imageUrl.trim().length > 0 ? imageUrl.trim() : null;
-
     await onSubmit({
       name: trimmedName,
-      imageUrl: normalizedImageUrl,
+      imageFile,
     });
 
     // 登録成功時のみ入力欄を初期化する。
     setName('');
-    setImageUrl('');
+    setImageFile(null);
   };
 
   return (
@@ -81,7 +80,7 @@ export default function ItemCreateForm({ isSubmitting, errorMessage, onSubmit }:
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-black"
             placeholder="例: カップヌードル シーフード"
             maxLength={100}
             required
@@ -89,18 +88,13 @@ export default function ItemCreateForm({ isSubmitting, errorMessage, onSubmit }:
           />
         </label>
 
-        {/* 画像URL入力: 任意項目。 */}
-        <label className="block">
-          <span className="mb-1 block text-xs text-slate-600">画像URL（任意）</span>
-          <input
-            type="url"
-            value={imageUrl}
-            onChange={(event) => setImageUrl(event.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            placeholder="https://example.com/item.jpg"
-            disabled={isSubmitting}
-          />
-        </label>
+        <ItemImageInput
+          disabled={isSubmitting}
+          selectedImageFile={imageFile}
+          existingImageUrl={null}
+          onSelectImageFile={(file) => setImageFile(file)}
+          onRemoveImage={() => setImageFile(null)}
+        />
 
         {errorMessage && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-700">{errorMessage}</div>

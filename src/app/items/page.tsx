@@ -27,7 +27,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import ItemCreateForm from '@/components/items/ItemCreateForm';
 import ItemEditModal from '@/components/items/ItemEditModal';
 import ItemRow from '@/components/items/ItemRow';
-import { addItem, deleteItem, listItems, updateItem, type Item } from '@/lib/items';
+import {
+  addItem,
+  deleteItem,
+  listItems,
+  updateItem,
+  type Item,
+  type ItemImageRef,
+} from '@/lib/items';
+import { deleteItemImageFile, uploadItemImageFile } from '@/lib/itemImageStorage';
 import { countStocksByItemId } from '@/lib/stocks';
 
 /**
@@ -79,14 +87,25 @@ export default function ItemsPage() {
    * この関数の用途:
    * - 品名を新規追加する。
    */
-  const handleCreate = async (payload: { name: string; imageUrl: string | null }) => {
+  const handleCreate = async (payload: { name: string; imageFile: File | null }) => {
     setCreateErrorMessage(null);
     setIsCreating(true);
 
+    let uploadedImage: ItemImageRef | null = null;
+
     try {
-      await addItem(payload.name, payload.imageUrl ?? undefined);
+      if (payload.imageFile) {
+        uploadedImage = await uploadItemImageFile(payload.imageFile);
+      }
+
+      await addItem(payload.name, uploadedImage);
       await loadItems();
     } catch (error) {
+      // 作成失敗時はアップロード済み画像が残らないよう削除する。
+      if (uploadedImage?.imagePath) {
+        await deleteItemImageFile(uploadedImage.imagePath).catch(() => null);
+      }
+
       const message = error instanceof Error ? error.message : '品名追加に失敗しました。';
       setCreateErrorMessage(message);
       throw error;
@@ -99,18 +118,61 @@ export default function ItemsPage() {
    * この関数の用途:
    * - 編集モーダルからの更新内容を保存する。
    */
-  const handleSaveEdit = async (payload: { id: string; name: string; imageUrl: string | null }) => {
+  const handleSaveEdit = async (payload: {
+    id: string;
+    name: string;
+    imageFile: File | null;
+    keepExistingImage: boolean;
+  }) => {
+    if (!editingItem) {
+      return;
+    }
+
     setIsSavingEdit(true);
     setEditErrorMessage(null);
 
+    let newlyUploadedImage: ItemImageRef | null = null;
+
     try {
-      await updateItem(payload.id, {
-        name: payload.name,
-        imageUrl: payload.imageUrl,
-      });
+      if (payload.imageFile) {
+        newlyUploadedImage = await uploadItemImageFile(payload.imageFile);
+      }
+
+      if (newlyUploadedImage) {
+        await updateItem(payload.id, {
+          name: payload.name,
+          imageUrl: newlyUploadedImage.imageUrl,
+          imagePath: newlyUploadedImage.imagePath,
+        });
+
+        // 新画像を反映できた後で旧画像を削除して、表示切れリスクを減らす。
+        if (editingItem.imagePath) {
+          await deleteItemImageFile(editingItem.imagePath).catch(() => null);
+        }
+      } else if (!payload.keepExistingImage) {
+        await updateItem(payload.id, {
+          name: payload.name,
+          imageUrl: null,
+          imagePath: null,
+        });
+
+        if (editingItem.imagePath) {
+          await deleteItemImageFile(editingItem.imagePath).catch(() => null);
+        }
+      } else {
+        await updateItem(payload.id, {
+          name: payload.name,
+        });
+      }
+
       setEditingItem(null);
       await loadItems();
     } catch (error) {
+      // 更新失敗時は新規アップロード画像を消して孤立ファイルを防ぐ。
+      if (newlyUploadedImage?.imagePath) {
+        await deleteItemImageFile(newlyUploadedImage.imagePath).catch(() => null);
+      }
+
       const message = error instanceof Error ? error.message : '品名更新に失敗しました。';
       setEditErrorMessage(message);
     } finally {
@@ -145,6 +207,9 @@ export default function ItemsPage() {
       }
 
       await deleteItem(item.id);
+      if (item.imagePath) {
+        await deleteItemImageFile(item.imagePath).catch(() => null);
+      }
       await loadItems();
     } catch (error) {
       const message = error instanceof Error ? error.message : '品名削除に失敗しました。';

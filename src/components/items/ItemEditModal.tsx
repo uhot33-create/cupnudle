@@ -15,6 +15,7 @@
  */
 
 import { useState } from 'react';
+import ItemImageInput from '@/components/items/ItemImageInput';
 import type { Item } from '@/lib/items';
 
 /**
@@ -26,7 +27,12 @@ type ItemEditModalProps = {
   isSaving: boolean;
   errorMessage: string | null;
   onClose: () => void;
-  onSave: (payload: { id: string; name: string; imageUrl: string | null }) => Promise<void>;
+  onSave: (payload: {
+    id: string;
+    name: string;
+    imageFile: File | null;
+    keepExistingImage: boolean;
+  }) => Promise<void>;
 };
 
 /**
@@ -38,7 +44,8 @@ type ItemEditModalProps = {
  */
 export default function ItemEditModal({ item, isSaving, errorMessage, onClose, onSave }: ItemEditModalProps) {
   const [name, setName] = useState(item.name);
-  const [imageUrl, setImageUrl] = useState(item.imageUrl ?? '');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [keepExistingImage, setKeepExistingImage] = useState(Boolean(item.imageUrl));
 
   /**
    * この関数の用途:
@@ -57,12 +64,11 @@ export default function ItemEditModal({ item, isSaving, errorMessage, onClose, o
       return;
     }
 
-    const normalizedImageUrl = imageUrl.trim().length > 0 ? imageUrl.trim() : null;
-
     await onSave({
       id: item.id,
       name: trimmedName,
-      imageUrl: normalizedImageUrl,
+      imageFile,
+      keepExistingImage,
     });
   };
 
@@ -78,23 +84,26 @@ export default function ItemEditModal({ item, isSaving, errorMessage, onClose, o
               type="text"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-black"
               maxLength={100}
               required
               disabled={isSaving}
             />
           </label>
 
-          <label className="block">
-            <span className="mb-1 block text-xs text-slate-600">画像URL（任意）</span>
-            <input
-              type="url"
-              value={imageUrl}
-              onChange={(event) => setImageUrl(event.target.value)}
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              disabled={isSaving}
-            />
-          </label>
+          <ItemImageInput
+            disabled={isSaving}
+            selectedImageFile={imageFile}
+            existingImageUrl={keepExistingImage ? item.imageUrl : null}
+            onSelectImageFile={(file) => {
+              setImageFile(file);
+              setKeepExistingImage(false);
+            }}
+            onRemoveImage={() => {
+              setImageFile(null);
+              setKeepExistingImage(false);
+            }}
+          />
 
           {errorMessage && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-sm text-red-700">{errorMessage}</div>

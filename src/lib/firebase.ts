@@ -1,7 +1,7 @@
 ﻿/**
  * このファイルの用途:
  * - Firebase SDK を1か所で初期化し、全画面で同じ接続設定を使うための共通モジュール。
- * - Firestore参照 `db` を export して、CRUD実装側で毎回初期化コードを書かないようにする。
+ * - Firestore参照とStorage参照を export して、CRUD実装側で毎回初期化コードを書かないようにする。
  *
  * なぜこの設定が必要か:
  * - 初期化処理を複数ファイルで重複させると、保守時に設定漏れが発生する。
@@ -17,6 +17,7 @@
 
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 /**
  * Firebase設定値の型。
@@ -39,7 +40,7 @@ type FirebaseConfig = {
  * なぜ必要か:
  * - 値が未設定のまま起動した場合に、どのキーが不足しているかを明確に表示するため。
  * どこを変更すればよいか:
- * - 必須キーを追加したときは `requiredKeys` の配列へ同じキーを追加する。
+ * - 必須キーを追加したときはキー列挙部分へ同じキーを追加する。
  *
  * 処理の流れ:
  * - 1) 必須キー一覧を定義する。
@@ -98,14 +99,17 @@ function getFirebaseConfigFromEnv(): FirebaseConfig {
 }
 
 /**
- * Firebase App を単一インスタンスで取得する処理。
- * なぜ必要か:
- * - Next.jsの開発時ホットリロードで初期化が複数回走るとエラーになるため、既存Appがあれば再利用する。
- * どこを変更すればよいか:
- * - 複数Firebaseプロジェクトを同時利用する場合は、名前付きApp初期化へ変更する。
+ * Firebase App を単一インスタンスで取得するためのキャッシュ。
  */
 let appInstance: ReturnType<typeof initializeApp> | null = null;
+/**
+ * Firestoreインスタンスのキャッシュ。
+ */
 let firestoreInstance: Firestore | null = null;
+/**
+ * Storageインスタンスのキャッシュ。
+ */
+let storageInstance: FirebaseStorage | null = null;
 
 /**
  * Firebase App を遅延初期化で取得する処理。
@@ -123,13 +127,6 @@ export function getFirebaseApp() {
 }
 
 /**
- * Firestore参照。
- * なぜ必要か:
- * - 画面・API層で `import { db } from '@/lib/firebase'` するだけで同一DB接続を使えるため。
- * どこを変更すればよいか:
- * - Emulator接続に切り替える場合は、ここに `connectFirestoreEmulator` を追加する。
- */
-/**
  * Firestore参照を遅延初期化で取得する処理。
  * なぜ必要か:
  * - Firebase App初期化と同様に、利用時初期化で安全に動かすため。
@@ -141,4 +138,18 @@ export function getDb() {
 
   firestoreInstance = getFirestore(getFirebaseApp());
   return firestoreInstance;
+}
+
+/**
+ * Firebase Storage参照を遅延初期化で取得する処理。
+ * なぜ必要か:
+ * - 品名画像をURL直書きではなく、Storageに保存して管理するため。
+ */
+export function getFirebaseStorage() {
+  if (storageInstance) {
+    return storageInstance;
+  }
+
+  storageInstance = getStorage(getFirebaseApp());
+  return storageInstance;
 }

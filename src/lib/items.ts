@@ -50,6 +50,7 @@ const ITEMS_COLLECTION = 'items';
 export type ItemDoc = {
   name: string;
   imageUrl: string | null;
+  imagePath: string | null;
   createdAt: Timestamp;
 };
 
@@ -68,6 +69,16 @@ export type Item = ItemDoc & {
 export type UpdateItemInput = {
   name?: string;
   imageUrl?: string | null;
+  imagePath?: string | null;
+};
+
+/**
+ * この型の用途:
+ * - Storageへ保存した画像参照情報を addItem 引数として渡す。
+ */
+export type ItemImageRef = {
+  imageUrl: string;
+  imagePath: string;
 };
 
 /**
@@ -89,6 +100,11 @@ function toItem(snapshot: QueryDocumentSnapshot<DocumentData>): Item {
     throw new Error('itemsドキュメントのimageUrlが不正です。');
   }
 
+  const imagePath = data.imagePath ?? null;
+  if (imagePath !== null && typeof imagePath !== 'string') {
+    throw new Error('itemsドキュメントのimagePathが不正です。');
+  }
+
   if (!data.createdAt) {
     throw new Error('itemsドキュメントのcreatedAtが不正です。');
   }
@@ -97,6 +113,7 @@ function toItem(snapshot: QueryDocumentSnapshot<DocumentData>): Item {
     id: snapshot.id,
     name: data.name,
     imageUrl,
+    imagePath,
     createdAt: data.createdAt as Timestamp,
   };
 }
@@ -111,7 +128,7 @@ function toItem(snapshot: QueryDocumentSnapshot<DocumentData>): Item {
  * どこを変更すればよいか:
  * - 品名の文字数制限を変える場合は、以下のバリデーション条件を変更する。
  */
-export async function addItem(name: string, imageUrl?: string): Promise<string> {
+export async function addItem(name: string, image: ItemImageRef | null = null): Promise<string> {
   const db = getDb();
   const trimmedName = name.trim();
   if (trimmedName.length === 0) {
@@ -121,11 +138,10 @@ export async function addItem(name: string, imageUrl?: string): Promise<string> 
     throw new Error('品名は100文字以内で入力してください。');
   }
 
-  const normalizedImageUrl = imageUrl?.trim() ? imageUrl.trim() : null;
-
   const docRef = await addDoc(collection(db, ITEMS_COLLECTION), {
     name: trimmedName,
-    imageUrl: normalizedImageUrl,
+    imageUrl: image?.imageUrl ?? null,
+    imagePath: image?.imagePath ?? null,
     createdAt: serverTimestamp(),
   });
 
@@ -165,7 +181,7 @@ export async function updateItem(id: string, updates: UpdateItemInput): Promise<
     throw new Error('更新対象IDが空です。');
   }
 
-  const payload: Partial<Pick<ItemDoc, 'name' | 'imageUrl'>> = {};
+  const payload: Partial<Pick<ItemDoc, 'name' | 'imageUrl' | 'imagePath'>> = {};
 
   if (updates.name !== undefined) {
     const trimmedName = updates.name.trim();
@@ -179,8 +195,11 @@ export async function updateItem(id: string, updates: UpdateItemInput): Promise<
   }
 
   if (updates.imageUrl !== undefined) {
-    const trimmedImageUrl = updates.imageUrl?.trim() ?? null;
-    payload.imageUrl = trimmedImageUrl && trimmedImageUrl.length > 0 ? trimmedImageUrl : null;
+    payload.imageUrl = updates.imageUrl;
+  }
+
+  if (updates.imagePath !== undefined) {
+    payload.imagePath = updates.imagePath;
   }
 
   if (Object.keys(payload).length === 0) {
@@ -234,6 +253,11 @@ export async function getItemById(id: string): Promise<Item | null> {
     throw new Error('itemsドキュメントのimageUrlが不正です。');
   }
 
+  const imagePath = data.imagePath ?? null;
+  if (imagePath !== null && typeof imagePath !== 'string') {
+    throw new Error('itemsドキュメントのimagePathが不正です。');
+  }
+
   if (!data.createdAt) {
     throw new Error('itemsドキュメントのcreatedAtが不正です。');
   }
@@ -242,6 +266,7 @@ export async function getItemById(id: string): Promise<Item | null> {
     id: snapshot.id,
     name: data.name,
     imageUrl,
+    imagePath,
     createdAt: data.createdAt as Timestamp,
   };
 }
