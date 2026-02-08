@@ -16,7 +16,7 @@
  */
 
 import { getApp, getApps, initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 
 /**
  * Firebase設定値の型。
@@ -48,16 +48,23 @@ type FirebaseConfig = {
  * - 4) すべて設定済みなら FirebaseConfig 形式で返す。
  */
 function getFirebaseConfigFromEnv(): FirebaseConfig {
-  const requiredKeys = [
-    'NEXT_PUBLIC_FIREBASE_API_KEY',
-    'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN',
-    'NEXT_PUBLIC_FIREBASE_PROJECT_ID',
-    'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET',
-    'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID',
-    'NEXT_PUBLIC_FIREBASE_APP_ID',
-  ] as const;
+  // Next.jsのクライアントビルドでは、NEXT_PUBLIC_* は「静的参照」のときだけ値が埋め込まれる。
+  // そのため process.env[key] のような動的参照を使うと、値が取得できず未設定扱いになる。
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN;
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+  const messagingSenderId = process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID;
+  const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID;
 
-  const missingKeys = requiredKeys.filter((key) => !process.env[key]);
+  const missingKeys = [
+    !apiKey ? 'NEXT_PUBLIC_FIREBASE_API_KEY' : null,
+    !authDomain ? 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN' : null,
+    !projectId ? 'NEXT_PUBLIC_FIREBASE_PROJECT_ID' : null,
+    !storageBucket ? 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET' : null,
+    !messagingSenderId ? 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID' : null,
+    !appId ? 'NEXT_PUBLIC_FIREBASE_APP_ID' : null,
+  ].filter((value): value is string => value !== null);
 
   if (missingKeys.length > 0) {
     throw new Error(
@@ -66,12 +73,12 @@ function getFirebaseConfigFromEnv(): FirebaseConfig {
   }
 
   return {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY as string,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN as string,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID as string,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET as string,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID as string,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID as string,
+    apiKey,
+    authDomain,
+    projectId,
+    storageBucket,
+    messagingSenderId,
+    appId,
   };
 }
 
@@ -82,8 +89,23 @@ function getFirebaseConfigFromEnv(): FirebaseConfig {
  * どこを変更すればよいか:
  * - 複数Firebaseプロジェクトを同時利用する場合は、名前付きApp初期化へ変更する。
  */
-const firebaseConfig = getFirebaseConfigFromEnv();
-export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+let appInstance: ReturnType<typeof initializeApp> | null = null;
+let firestoreInstance: Firestore | null = null;
+
+/**
+ * Firebase App を遅延初期化で取得する処理。
+ * なぜ必要か:
+ * - importされた瞬間ではなく、実際に利用される時点で初期化することで、不要な早期エラーを防ぐため。
+ */
+export function getFirebaseApp() {
+  if (appInstance) {
+    return appInstance;
+  }
+
+  const firebaseConfig = getFirebaseConfigFromEnv();
+  appInstance = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+  return appInstance;
+}
 
 /**
  * Firestore参照。
@@ -92,4 +114,16 @@ export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfi
  * どこを変更すればよいか:
  * - Emulator接続に切り替える場合は、ここに `connectFirestoreEmulator` を追加する。
  */
-export const db = getFirestore(app);
+/**
+ * Firestore参照を遅延初期化で取得する処理。
+ * なぜ必要か:
+ * - Firebase App初期化と同様に、利用時初期化で安全に動かすため。
+ */
+export function getDb() {
+  if (firestoreInstance) {
+    return firestoreInstance;
+  }
+
+  firestoreInstance = getFirestore(getFirebaseApp());
+  return firestoreInstance;
+}

@@ -33,7 +33,7 @@ import {
   type Timestamp,
   type UpdateData,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { getDb } from '@/lib/firebase';
 import { dateInputToTimestamp, type DateInputValue } from '@/lib/date';
 import { getItemById } from '@/lib/items';
 
@@ -143,6 +143,7 @@ export async function addStock(
   expiryDate: DateInputValue,
   quantity: number,
 ): Promise<string> {
+  const db = getDb();
   if (!Number.isInteger(quantity) || quantity < 0) {
     throw new Error('個数は0以上の整数で入力してください。');
   }
@@ -200,6 +201,7 @@ export async function addStock(
  * - 期限が近い順で表示する要件をDBクエリで満たすため。
  */
 export async function listStocks(): Promise<Stock[]> {
+  const db = getDb();
   const q = query(collection(db, STOCKS_COLLECTION), orderBy('expiryDate', 'asc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(toStock);
@@ -219,6 +221,7 @@ export async function listStocks(): Promise<Stock[]> {
  * - 4) updatedAtを必ず更新する。
  */
 export async function updateStock(id: string, updates: UpdateStockInput): Promise<void> {
+  const db = getDb();
   if (!id.trim()) {
     throw new Error('更新対象IDが空です。');
   }
@@ -277,6 +280,7 @@ export async function updateStock(id: string, updates: UpdateStockInput): Promis
  * - 在庫を削除する。
  */
 export async function deleteStock(id: string): Promise<void> {
+  const db = getDb();
   if (!id.trim()) {
     throw new Error('削除対象IDが空です。');
   }
@@ -300,6 +304,7 @@ export async function deleteStock(id: string): Promise<void> {
  * - 4) 問題なければquantityとupdatedAtを同時更新する。
  */
 export async function incrementStock(id: string, delta: number): Promise<void> {
+  const db = getDb();
   if (!id.trim()) {
     throw new Error('更新対象IDが空です。');
   }
@@ -339,6 +344,7 @@ export async function incrementStock(id: string, delta: number): Promise<void> {
  * - 単一在庫を取得する。編集画面の初期表示で利用する。
  */
 export async function getStockById(id: string): Promise<Stock | null> {
+  const db = getDb();
   if (!id.trim()) {
     throw new Error('取得対象IDが空です。');
   }
@@ -394,6 +400,7 @@ export async function getStockById(id: string): Promise<Stock | null> {
  * - `query`: 絞り込み条件をまとめた取得命令を作る。
  */
 export async function countStocksByItemId(itemId: string): Promise<number> {
+  const db = getDb();
   if (!itemId.trim()) {
     throw new Error('参照件数取得対象のitemIdが空です。');
   }

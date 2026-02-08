@@ -29,7 +29,7 @@ import {
   type QueryDocumentSnapshot,
   type Timestamp,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { getDb } from '@/lib/firebase';
 
 /**
  * この定数の用途:
@@ -112,6 +112,7 @@ function toItem(snapshot: QueryDocumentSnapshot<DocumentData>): Item {
  * - 品名の文字数制限を変える場合は、以下のバリデーション条件を変更する。
  */
 export async function addItem(name: string, imageUrl?: string): Promise<string> {
+  const db = getDb();
   const trimmedName = name.trim();
   if (trimmedName.length === 0) {
     throw new Error('品名は必須です。');
@@ -139,6 +140,7 @@ export async function addItem(name: string, imageUrl?: string): Promise<string> 
  * - 一覧表示を安定させ、ユーザーが目的の品名を探しやすくするため。
  */
 export async function listItems(): Promise<Item[]> {
+  const db = getDb();
   const q = query(collection(db, ITEMS_COLLECTION), orderBy('name', 'asc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(toItem);
@@ -158,6 +160,7 @@ export async function listItems(): Promise<Item[]> {
  * - 4) updateDocを実行する。
  */
 export async function updateItem(id: string, updates: UpdateItemInput): Promise<void> {
+  const db = getDb();
   if (!id.trim()) {
     throw new Error('更新対象IDが空です。');
   }
@@ -195,6 +198,7 @@ export async function updateItem(id: string, updates: UpdateItemInput): Promise<
  * - Firestore削除処理を関数化し、画面側の責務を減らすため。
  */
 export async function deleteItem(id: string): Promise<void> {
+  const db = getDb();
   if (!id.trim()) {
     throw new Error('削除対象IDが空です。');
   }
@@ -210,6 +214,7 @@ export async function deleteItem(id: string): Promise<void> {
  * - `stocks.ts` で itemId 指定時に品名スナップショットを作るため。
  */
 export async function getItemById(id: string): Promise<Item | null> {
+  const db = getDb();
   if (!id.trim()) {
     throw new Error('取得対象IDが空です。');
   }
