@@ -110,6 +110,7 @@ let firestoreInstance: Firestore | null = null;
  * Storageインスタンスのキャッシュ。
  */
 let storageInstance: FirebaseStorage | null = null;
+const storageInstanceByBucket = new Map<string, FirebaseStorage>();
 
 /**
  * Firebase App を遅延初期化で取得する処理。
@@ -145,11 +146,30 @@ export function getDb() {
  * なぜ必要か:
  * - 品名画像をURL直書きではなく、Storageに保存して管理するため。
  */
-export function getFirebaseStorage() {
+export function getFirebaseStorage(bucketName?: string) {
+  if (bucketName) {
+    const cachedByBucket = storageInstanceByBucket.get(bucketName);
+    if (cachedByBucket) {
+      return cachedByBucket;
+    }
+
+    const nextInstance = getStorage(getFirebaseApp(), `gs://${bucketName}`);
+    storageInstanceByBucket.set(bucketName, nextInstance);
+    return nextInstance;
+  }
+
   if (storageInstance) {
     return storageInstance;
   }
 
   storageInstance = getStorage(getFirebaseApp());
   return storageInstance;
+}
+
+/**
+ * この関数の用途:
+ * - 環境変数から解決されたStorageバケット名を返す。
+ */
+export function getFirebaseStorageBucketName(): string {
+  return getFirebaseConfigFromEnv().storageBucket;
 }

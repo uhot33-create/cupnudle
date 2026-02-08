@@ -16,7 +16,7 @@
  */
 
 import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
-import { getFirebaseStorage } from '@/lib/firebase';
+import { getFirebaseStorage, getFirebaseStorageBucketName } from '@/lib/firebase';
 
 /**
  * 画像サイズ上限（5MB）。
@@ -33,6 +33,44 @@ export type StoredItemImage = {
   imageUrl: string;
   imagePath: string;
 };
+
+function isStorageErrorCode(error: unknown, code: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === code
+  );
+}
+
+function toFriendlyUploadError(error: unknown): Error {
+  if (isStorageErrorCode(error, 'storage/retry-limit-exceeded')) {
+    return new Error(
+      '画像アップロードがタイムアウトしました。ネットワーク接続と Firebase Storage 設定（bucket / ルール）を確認してください。',
+    );
+  }
+
+  if (
+    isStorageErrorCode(error, 'storage/bucket-not-found') ||
+    isStorageErrorCode(error, 'storage/no-default-bucket')
+  ) {
+    return new Error(
+      'Firebase Storage のバケット設定が不正です。.env.local の NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET を確認してください。',
+    );
+  }
+
+  return error instanceof Error ? error : new Error('画像アップロードに失敗しました。');
+}
+
+function resolveFallbackBucketName(bucketName: string): string | null {
+  if (bucketName.endsWith('.firebasestorage.app')) {
+    return bucketName.replace(/\.firebasestorage\.app$/, '.appspot.com');
+  }
+  if (bucketName.endsWith('.appspot.com')) {
+    return bucketName.replace(/\.appspot\.com$/, '.firebasestorage.app');
+  }
+  return null;
+}
 
 /**
  * この関数の用途:
@@ -58,14 +96,45 @@ export function validateItemImageFile(file: File): void {
 export async function uploadItemImageFile(file: File): Promise<StoredItemImage> {
   validateItemImageFile(file);
 
-  const storage = getFirebaseStorage();
   const safeFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
   const imagePath = `items/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeFileName}`;
-
+  const storage = getFirebaseStorage();
   const storageRef = ref(storage, imagePath);
-  await uploadBytes(storageRef, file, {
-    contentType: file.type,
-  });
+
+  try {
+    await uploadBytes(storageRef, file, {
+      contentType: file.type,
+    });
+  } catch (firstError) {
+    const shouldTryFallbackBucket =
+      isStorageErrorCode(firstError, 'storage/retry-limit-exceeded') ||
+      isStorageErrorCode(firstError, 'storage/bucket-not-found') ||
+      isStorageErrorCode(firstError, 'storage/no-default-bucket');
+
+    if (!shouldTryFallbackBucket) {
+      throw toFriendlyUploadError(firstError);
+    }
+
+    const fallbackBucketName = resolveFallbackBucketName(getFirebaseStorageBucketName());
+    if (!fallbackBucketName) {
+      throw toFriendlyUploadError(firstError);
+    }
+
+    try {
+      const fallbackStorage = getFirebaseStorage(fallbackBucketName);
+      const fallbackStorageRef = ref(fallbackStorage, imagePath);
+      await uploadBytes(fallbackStorageRef, file, {
+        contentType: file.type,
+      });
+      const imageUrl = await getDownloadURL(fallbackStorageRef);
+      return {
+        imageUrl,
+        imagePath,
+      };
+    } catch {
+      throw toFriendlyUploadError(firstError);
+    }
+  }
 
   const imageUrl = await getDownloadURL(storageRef);
   return {
